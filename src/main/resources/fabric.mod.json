@@ -1,0 +1,28 @@
+{
+  "schemaVersion": 1,
+  "id": "the_idea_anvil",
+  "version": "${version}",
+  "name": "The_Idea_Anvil",
+  "description": "Creates a new dimension/minigame where you can iceboat to get diamonds. Go to a beacon to exit and get your diamonds. The deeper you go, the more diamonds you get. But if you fall, all diamonds vanish.",
+  "authors": [],
+  "contact": {},
+  "license": "MIT",
+  "icon": "assets/the_idea_anvil/icon.png",
+  "environment": "*",
+  "entrypoints": {
+    "client": [
+      "org.tanjimkamal.the_idea_anvil.client.The_idea_anvilClient"
+    ],
+    "main": [
+      "org.tanjimkamal.the_idea_anvil.The_idea_anvil"
+    ]
+  },
+  "mixins": [
+    "the_idea_anvil.mixins.json"
+  ],
+  "depends": {
+    "fabricloader": ">=${loader_version}",
+    "fabric": "*",
+    "minecraft": "${minecraft_version}"
+  }
+}
