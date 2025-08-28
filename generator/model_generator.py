@@ -103,7 +103,7 @@ class ModelGenerator:
         # Save models
         self.save_models(base_model, individual_models)
         
-        print(f"\\nModel generation complete!")
+        print(f"\nModel generation complete!")
         print(f"Output folder: {self.models_item_folder}")
         print(f"Base model overrides: {len(base_model['overrides'])}")
 
