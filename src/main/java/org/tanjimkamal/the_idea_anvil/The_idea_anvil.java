@@ -1,7 +1,6 @@
 package org.tanjimkamal.the_idea_anvil;
 
 import net.fabricmc.api.ModInitializer;
-import net.fabricmc.fabric.api.command.v2.CommandRegistrationCallback;
 import net.fabricmc.fabric.api.itemgroup.v1.ItemGroupEvents;
 import net.minecraft.item.Item;
 import net.minecraft.item.ItemGroups;
@@ -12,8 +11,6 @@ import net.minecraft.registry.RegistryKeys;
 import net.minecraft.util.Identifier;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.tanjimkamal.the_idea_anvil.command.CustomTextureCommand;
-import org.tanjimkamal.the_idea_anvil.item.CustomTextureItem;
 
 import java.util.function.Function;
 
@@ -25,7 +22,6 @@ public class The_idea_anvil implements ModInitializer {
     @Override
     public void onInitialize() {
         ModItems.initialize();
-        CommandRegistrationCallback.EVENT.register(CustomTextureCommand::register);
     }
 
     public static class ModItems {
@@ -45,7 +41,7 @@ public class The_idea_anvil implements ModInitializer {
 
             return item;
         }
-        public static final Item CUSTOM_ITEM = register("custom_item", CustomTextureItem::new, new Item.Settings());
+        public static final Item CUSTOM_ITEM = register("custom_item", Item::new, new Item.Settings());
 
     }
 }
