@@ -1,0 +1,7 @@
+
+{
+  "parent": "minecraft:item/generated",
+  "textures": {
+    "layer0": "the_idea_anvil:item/blaze_rod_wood_cherry"
+  }
+}

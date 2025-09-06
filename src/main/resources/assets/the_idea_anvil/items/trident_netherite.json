@@ -1,0 +1,7 @@
+
+{
+  "parent": "minecraft:item/generated",
+  "textures": {
+    "layer0": "the_idea_anvil:item/trident_netherite"
+  }
+}
