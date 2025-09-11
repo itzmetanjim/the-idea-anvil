@@ -133,7 +133,12 @@ public class The_idea_anvil implements ModInitializer {
             public String[] getCmdsToRun(String[] cmds, String selfUUID){
                 String[] cmdsToRun = new String[cmds.length];
                 for (int i = 0; i < cmds.length; i++) {
-                    cmdsToRun[i] = "execute as " + selfUUID + " at @s run " + cmds[i];
+                    if(!Objects.equals(cmds[i].strip(), "")){
+                        cmdsToRun[i] = "execute as " + selfUUID + " at @s run " + cmds[i];
+                    }
+                    else{
+                        cmdsToRun[i]="function the_idea_anvil:do_nothing";
+                    }
                 }
                 return cmdsToRun;
             }
@@ -180,11 +185,13 @@ public class The_idea_anvil implements ModInitializer {
                 ServerCommandSource commandSource = server.getCommandSource();
                 CommandDispatcher<ServerCommandSource> dispatcher = commandSource.getDispatcher();
                 for(String cmd : cmdsToRun){
-                    try {
-                        dispatcher.execute(cmd, commandSource);
-                    } catch (CommandSyntaxException e) {
-                        throw new RuntimeException(e);
-                    }
+                    if(Objects.equals(cmd.strip(), "function the_idea_anvil:do_nothing") || Objects.equals(cmd.strip(), "")) {
+                        try {
+                            dispatcher.execute(cmd, commandSource);
+                        } catch (CommandSyntaxException e) {
+                            throw new RuntimeException(e);
+                        }
+                    }else return;
                 }
             }
 
