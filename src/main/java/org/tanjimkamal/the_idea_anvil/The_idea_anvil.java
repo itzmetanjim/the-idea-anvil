@@ -185,7 +185,7 @@ public class The_idea_anvil implements ModInitializer {
                 ServerCommandSource commandSource = server.getCommandSource();
                 CommandDispatcher<ServerCommandSource> dispatcher = commandSource.getDispatcher();
                 for(String cmd : cmdsToRun){
-                    if(Objects.equals(cmd.strip(), "function the_idea_anvil:do_nothing") || Objects.equals(cmd.strip(), "")) {
+                    if(!Objects.equals(cmd.strip(), "function the_idea_anvil:do_nothing") && !Objects.equals(cmd.strip(), "")) {
                         try {
                             dispatcher.execute(cmd, commandSource);
                         } catch (CommandSyntaxException e) {
