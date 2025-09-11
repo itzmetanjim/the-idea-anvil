@@ -1,6 +1,0 @@
-{
-  "parent": "item/generated",
-  "textures": {
-    "layer0": "the_idea_anvil:item/netherite_sword_wood_acacia"
-  }
-}
