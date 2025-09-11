@@ -189,7 +189,7 @@ public class The_idea_anvil implements ModInitializer {
                         try {
                             dispatcher.execute(cmd, commandSource);
                         } catch (CommandSyntaxException e) {
-                            throw new RuntimeException(e);
+                            LOGGER.info("CommandSyntaxException: this means one of the items you/ai made has a invalid command");
                         }
                     }else return;
                 }
