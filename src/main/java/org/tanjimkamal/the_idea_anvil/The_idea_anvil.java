@@ -29,6 +29,7 @@ import net.minecraft.util.Hand;
 import net.minecraft.util.Identifier;
 import net.minecraft.util.math.BlockPos;
 import net.minecraft.world.World;
+import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -38,15 +39,207 @@ import java.util.List;
 import java.util.Objects;
 import java.util.function.Function;
 import java.util.regex.Pattern;
+import com.google.gson.JsonArray;
+import com.google.gson.JsonObject;
+import com.google.gson.JsonParser;
+import com.google.gson.JsonSyntaxException;
+
+import java.io.IOException;
+import java.io.InputStream;
+import java.net.URI;
+import java.net.http.HttpClient;
+import java.net.http.HttpRequest;
+import java.net.http.HttpResponse;
+import java.nio.charset.StandardCharsets;
+import java.util.Stack;
+import java.util.regex.Matcher;
+
 
 public class The_idea_anvil implements ModInitializer {
-
     public static final String MOD_ID = "the_idea_anvil";
     public static final Logger LOGGER = LoggerFactory.getLogger(MOD_ID);
+
+private static final String BASE_URL = "https://ai.hackclub.com/chat/completions";
+private static String sysprompt;
+
+// Load system prompt (call this in your mod initialization)
+private void loadSystemPrompt() {
+    try {
+        InputStream inputStream = getClass().getResourceAsStream("/sysprompt.md");
+        if (inputStream == null) {
+            throw new RuntimeException("sysprompt.md not found in resources");
+        }
+        sysprompt = new String(inputStream.readAllBytes(), StandardCharsets.UTF_8);
+        inputStream.close();
+    } catch (IOException e) {
+        throw new RuntimeException("Failed to load sysprompt.md", e);
+    }
+}
+
+/**
+ * Extract JSON from a model response and return the parsed JsonObject.
+ * Strategy:
+ * 1) Prefer a ```json fenced code block (case-insensitive).
+ * 2) Fallback to any fenced code block.
+ * 3) Find balanced JSON (handles strings/escapes)
+ *
+ * @param text The response text to parse
+ * @param returnText If true, returns the raw JSON string instead of parsed JsonObject
+ * @return JsonObject or String depending on returnText parameter
+ * @throws IllegalArgumentException if no valid JSON is found
+ */
+private Object extractJsonFromResponse(String text, boolean returnText) {
+    // 1) Look for a ```json fenced block
+    Pattern jsonPattern = Pattern.compile("```json\\s*\\n([\\s\\S]*?)\\n```", Pattern.CASE_INSENSITIVE);
+    Matcher matcher = jsonPattern.matcher(text);
+    if (matcher.find()) {
+        String candidate = matcher.group(1).strip();
+        try {
+            return returnText ? candidate : JsonParser.parseString(candidate).getAsJsonObject();
+        } catch (JsonSyntaxException e) {
+            // continue to fallbacks
+        }
+    }
+
+    // 2) Any fenced code block
+    Pattern codePattern = Pattern.compile("```[\\w+-]*\\n([\\s\\S]*?)\\n```");
+    matcher = codePattern.matcher(text);
+    if (matcher.find()) {
+        String candidate = matcher.group(1).strip();
+        try {
+            return returnText ? candidate : JsonParser.parseString(candidate).getAsJsonObject();
+        } catch (JsonSyntaxException e) {
+            // continue to fallbacks
+        }
+    }
+
+    // 3) Find balanced JSON (handles strings/escapes)
+    for (int idx = 0; idx < text.length(); idx++) {
+        char ch = text.charAt(idx);
+        if (ch == '{' || ch == '[') {
+            String candidate = extractBalancedFrom(text, idx);
+            if (candidate != null) {
+                try {
+                    return returnText ? candidate : JsonParser.parseString(candidate).getAsJsonObject();
+                } catch (JsonSyntaxException e) {
+                    // maybe malformed; continue searching
+                }
+            }
+        }
+    }
+
+    throw new IllegalArgumentException("No valid JSON found in the provided text.");
+}
+
+private Object extractJsonFromResponse(String text) {
+    return extractJsonFromResponse(text, false);
+}
+
+private String extractBalancedFrom(String text, int start) {
+    Stack<Character> stack = new Stack<>();
+    boolean inStr = false;
+    boolean esc = false;
+
+    for (int i = start; i < text.length(); i++) {
+        char ch = text.charAt(i);
+
+        if (esc) {
+            esc = false;
+            continue;
+        }
+
+        if (ch == '\\') {
+            esc = true;
+            continue;
+        }
+
+        if (ch == '"') {
+            inStr = !inStr;
+            continue;
+        }
+
+        if (inStr) {
+            continue;
+        }
+
+        if (ch == '{') {
+            stack.push('}');
+        } else if (ch == '[') {
+            stack.push(']');
+        } else if (ch == '}' || ch == ']') {
+            if (stack.isEmpty() || ch != stack.peek()) {
+                return null;
+            }
+            stack.pop();
+            if (stack.isEmpty()) {
+                return text.substring(start, i + 1);
+            }
+        }
+    }
+
+    return null;
+}
+
+public JsonObject getItem(String itemDesc) {
+    try {
+        // Create request body
+        JsonObject requestBody = getRequestBody(itemDesc);
+
+        // Create HTTP client and request
+        HttpClient client = HttpClient.newHttpClient();
+        HttpRequest request = HttpRequest.newBuilder()
+                .uri(URI.create(BASE_URL))
+                .header("Content-Type", "application/json")
+                .POST(HttpRequest.BodyPublishers.ofString(requestBody.toString()))
+                .build();
+
+        // Send request and get response
+        HttpResponse<String> response = client.send(request, HttpResponse.BodyHandlers.ofString());
+
+        // Parse response
+        JsonObject responseJson = JsonParser.parseString(response.body()).getAsJsonObject();
+        System.out.println(responseJson.toString().substring(0, Math.min(100, responseJson.toString().length())));
+
+        String content = responseJson.getAsJsonArray("choices")
+                .get(0).getAsJsonObject()
+                .getAsJsonObject("message")
+                .get("content").getAsString();
+
+        System.out.println(content);
+
+        JsonObject itemJson = (JsonObject) extractJsonFromResponse(content);
+        return itemJson;
+
+    } catch (IOException | InterruptedException e) {
+        throw new RuntimeException("Failed to get item", e);
+    }
+}
+
+    private static @NotNull JsonObject getRequestBody(String itemDesc) {
+        JsonObject requestBody = new JsonObject();
+        JsonArray messages = new JsonArray();
+
+        JsonObject systemMessage = new JsonObject();
+        systemMessage.addProperty("role", "system");
+        systemMessage.addProperty("content", sysprompt);
+        messages.add(systemMessage);
+
+        JsonObject userMessage = new JsonObject();
+        userMessage.addProperty("role", "user");
+        userMessage.addProperty("content", itemDesc);
+        messages.add(userMessage);
+
+        requestBody.add("messages", messages);
+        requestBody.addProperty("model", "moonshotai/kimi-k2-instruct-0905");
+        requestBody.addProperty("temperature", 0.1);
+        return requestBody;
+    }
+
     @Override
     public void onInitialize() {
         ModItems.initialize();
         ModComponents.initialize();
+        loadSystemPrompt();
     }
 
     public static class ModComponents {
