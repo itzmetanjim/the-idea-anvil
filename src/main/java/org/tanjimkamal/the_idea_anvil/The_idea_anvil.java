@@ -41,7 +41,6 @@ import org.slf4j.LoggerFactory;
 
 import java.util.Arrays;
 import java.util.List;
-import java.util.Objects;
 import java.util.function.Function;
 import java.util.regex.Pattern;
 import com.google.gson.JsonArray;
@@ -73,7 +72,7 @@ public class The_idea_anvil implements ModInitializer {
 private static final String BASE_URL = "https://ai.hackclub.com/chat/completions";
 private static String sysprompt;
 
-// Load system prompt (call this in your mod initialization)
+
 private void loadSystemPrompt() {
     try {
         InputStream inputStream = getClass().getResourceAsStream("/sysprompt.md");
@@ -99,8 +98,9 @@ private void loadSystemPrompt() {
  * @return JsonObject or String depending on returnText parameter
  * @throws IllegalArgumentException if no valid JSON is found
  */
+@SuppressWarnings("SameParameterValue")
 private Object extractJsonFromResponse(String text, boolean returnText) {
-    // 1) Look for a ```json fenced block
+    // look for a ```json fenced block
     Pattern jsonPattern = Pattern.compile("```json\\s*\\n([\\s\\S]*?)\\n```", Pattern.CASE_INSENSITIVE);
     Matcher matcher = jsonPattern.matcher(text);
     if (matcher.find()) {
@@ -108,11 +108,11 @@ private Object extractJsonFromResponse(String text, boolean returnText) {
         try {
             return returnText ? candidate : JsonParser.parseString(candidate).getAsJsonObject();
         } catch (JsonSyntaxException e) {
-            // continue to fallbacks
+            // continue
         }
     }
 
-    // 2) Any fenced code block
+    // other fenced code block
     Pattern codePattern = Pattern.compile("```[\\w+-]*\\n([\\s\\S]*?)\\n```");
     matcher = codePattern.matcher(text);
     if (matcher.find()) {
@@ -124,7 +124,7 @@ private Object extractJsonFromResponse(String text, boolean returnText) {
         }
     }
 
-    // 3) Find balanced JSON (handles strings/escapes)
+    // find balanced {} / []
     for (int idx = 0; idx < text.length(); idx++) {
         char ch = text.charAt(idx);
         if (ch == '{' || ch == '[') {
@@ -133,7 +133,7 @@ private Object extractJsonFromResponse(String text, boolean returnText) {
                 try {
                     return returnText ? candidate : JsonParser.parseString(candidate).getAsJsonObject();
                 } catch (JsonSyntaxException e) {
-                    // maybe malformed; continue searching
+                    // maybe malformed
                 }
             }
         }
@@ -193,10 +193,8 @@ private String extractBalancedFrom(String text, int start) {
 
 public JsonObject getItem(String itemDesc) {
     try {
-        // Create request body
         JsonObject requestBody = getRequestBody(itemDesc);
         String content;
-        // Create HTTP client and request
         try(HttpClient client = HttpClient.newHttpClient()) {
             HttpRequest request = HttpRequest.newBuilder()
                     .uri(URI.create(BASE_URL))
@@ -204,10 +202,8 @@ public JsonObject getItem(String itemDesc) {
                     .POST(HttpRequest.BodyPublishers.ofString(requestBody.toString()))
                     .build();
 
-            // Send request and get response
             HttpResponse<String> response = client.send(request, HttpResponse.BodyHandlers.ofString());
 
-            // Parse response
             JsonObject responseJson = JsonParser.parseString(response.body()).getAsJsonObject();
             System.out.println(responseJson.toString().substring(0, Math.min(100, responseJson.toString().length())));
 
@@ -246,36 +242,27 @@ public JsonObject getItem(String itemDesc) {
     }
     public void giveItemToPlayer(ServerPlayerEntity player, String itemId, JsonElement components) {
     try {
-        // Parse item ID
         Identifier itemIdentifier = Identifier.of(itemId);
         Item item = Registries.ITEM.get(itemIdentifier);
 
-        // Create base ItemStack
         ItemStack itemStack = new ItemStack(item);
 
-        // Apply components if provided
         if (components != null && components.isJsonObject()) {
-            // Use Minecraft's built-in component deserialization
             DataResult<ComponentMap> result = ComponentMap.CODEC.parse(JsonOps.INSTANCE, components);
 
             if (result.result().isPresent()) {
                 ComponentMap componentMap = result.result().get();
-                // Apply all components from the parsed map
                 itemStack.applyComponentsFrom(componentMap);
             } else {
-                // Log error if parsing failed
-                System.err.println("Failed to parse components: " + result.error().map(Object::toString).orElse("Unknown error"));
+                LOGGER.warn("Failed to parse components: {}", result.error().map(Object::toString).orElse("Unknown error"));
                 return;
             }
         }
 
-        // Give item to player
         boolean success = player.getInventory().insertStack(itemStack);
 
-        // If inventory is full, drop the item
         if (!success) {
             player.dropItem(itemStack, false);
-            // Consider it successful since we dropped it
         }
 
     } catch (Exception e) {
@@ -288,11 +275,16 @@ public JsonObject getItem(String itemDesc) {
         ModItems.initialize();
         ModComponents.initialize();
         loadSystemPrompt();
+        CommandRegistrationCallback.EVENT.register((dispatcher, registryAccess, environment) -> dispatcher.register(CommandManager.literal("idea")
+                .then(CommandManager.argument("value", StringArgumentType.greedyString())
+                .executes(this::ideaCommand))));
+        /* if any problems near here then try this
         CommandRegistrationCallback.EVENT.register((dispatcher, registryAccess, environment) -> {
             dispatcher.register(CommandManager.literal("idea")
                     .then(CommandManager.argument("value", StringArgumentType.greedyString())
                     .executes(this::ideaCommand)));
         });
+        */
     }
 
     private int ideaCommand(CommandContext<ServerCommandSource> context) {
@@ -391,123 +383,128 @@ public JsonObject getItem(String itemDesc) {
                 String cmdc1 = applyRegexes(cmdc,patterns,replacements);
                 return cmdc1.split("(?<!#)#/ *");
             }
-            public String[] getCmdsToRun(String[] cmds, String selfUUID){
-                String[] cmdsToRun = new String[cmds.length];
-                for (int i = 0; i < cmds.length; i++) {
-                    if(!Objects.equals(cmds[i].strip(), "")){
-                        cmdsToRun[i] = "execute as " + selfUUID + " at @s run " + cmds[i];
-                    }
-                    else{
-                        cmdsToRun[i]="function the_idea_anvil:do_nothing";
-                    }
-                }
-                return cmdsToRun;
-            }
             @Override
             public ActionResult use(World world, PlayerEntity user, Hand hand) {
-                // This is to prevent desync.
                 if (world.isClient) {
                     return ActionResult.PASS;
                 }
                 String userUUID = user.getUuidAsString();
-                LOGGER.trace("Used item, called use");
-                String cmdc=user.getStackInHand(hand).getOrDefault(ModComponents.USE_CMD,"");
-                String[] cmds = getCommands(cmdc,"",userUUID,"","","");
-                runCmds(user, userUUID, cmds);
+                String cmdc = user.getStackInHand(hand).getOrDefault(ModComponents.USE_CMD, "");
+                if (cmdc.isEmpty()) {
+                    return ActionResult.PASS;
+                }
+
+                String[] cmds = getCommands(cmdc, "", userUUID, "", "", "");
+                executeCommands(cmds, user);
 
                 return ActionResult.SUCCESS;
             }
 
             @Override
             public void postHit(ItemStack stack, LivingEntity target, LivingEntity attacker) {
-                // This is to prevent desync.
                 if (target.getWorld().isClient()) {
                     return;
                 }
-                String targetUUID = target.getUuidAsString(); // example 8f5f2803-2c9b-4c6c-90d4-6d53828d245b
+                String targetUUID = target.getUuidAsString();
                 String attackerUUID = attacker.getUuidAsString();
-                String cmdc=stack.getOrDefault(ModComponents.POST_HIT_CMD,"");
-                String[] cmds = getCommands(cmdc,targetUUID,attackerUUID,"","","");
-                runCmds(attacker, attackerUUID, cmds);
-                LOGGER.trace("Used item.");
-            }
-
-            private void runCmds(LivingEntity attacker, String attackerUUID, String[] cmds) {
-                String[] cmdsToRun = getCmdsToRun(cmds,attackerUUID);
-                MinecraftServer server = attacker.getServer();
-                if(server == null){
-                    LOGGER.debug("Reached server==null");
+                String cmdc = stack.getOrDefault(ModComponents.POST_HIT_CMD, "");
+                if (cmdc.isEmpty()) {
                     return;
                 }
-                genericCmdRun(cmdsToRun, server);
+
+                String[] cmds = getCommands(cmdc, targetUUID, attackerUUID, "", "", "");
+                executeCommands(cmds, attacker);
             }
 
-            private void genericCmdRun(String[] cmdsToRun, MinecraftServer server) {
-                ServerCommandSource commandSource = server.getCommandSource();
-                CommandDispatcher<ServerCommandSource> dispatcher = commandSource.getDispatcher();
-                for(String cmd : cmdsToRun){
-                    if(!Objects.equals(cmd.strip(), "function the_idea_anvil:do_nothing") && !Objects.equals(cmd.strip(), "")) {
-                        try {
-                            LOGGER.info("Running cmd {}",cmd);
-                            dispatcher.execute(cmd, commandSource);
-                        } catch (CommandSyntaxException e) {
-                            LOGGER.info("CommandSyntaxException: this means one of the items you/ai made has a invalid command");
-                        }
-                    }else return;
+            private void executeCommands(String[] commands, Entity executor) {
+                if (executor == null || executor.getWorld().isClient()) {
+                    return;
+                }
+
+                MinecraftServer server = executor.getServer();
+                if (server == null) {
+                    LOGGER.warn("Could not execute commands for entity {} because its server instance was null.", executor.getUuidAsString());
+                    return;
+                }
+
+                if (!(executor.getWorld() instanceof ServerWorld serverWorld)) {
+                    return;
+                }
+
+                ServerCommandSource source = executor.getCommandSource(serverWorld).withLevel(2);
+
+                CommandDispatcher<ServerCommandSource> dispatcher = server.getCommandManager().getDispatcher();
+
+                for (String cmd : commands) {
+                    String strippedCmd = cmd.strip();
+                    if (strippedCmd.isEmpty()) continue;
+
+                    try {
+                        dispatcher.execute(strippedCmd, source);
+                    } catch (CommandSyntaxException e) {
+                        source.sendError(Text.literal("Invalid command syntax."));
+                        LOGGER.warn("CommandSyntaxException for command '{}': {}", strippedCmd, e.getMessage());
+                    } catch (Exception e) {
+                        source.sendError(Text.literal("An error occurred while running a command."));
+                        LOGGER.error("An unexpected error occurred executing command '{}' for entity {}", strippedCmd, executor.getUuidAsString(), e);
+                    }
                 }
             }
 
-            private void runCmdsWithServer(MinecraftServer server, String attackerUUID, String[] cmds) {
-                String[] cmdsToRun = getCmdsToRun(cmds,attackerUUID);
-                genericCmdRun(cmdsToRun, server);
-            }
 
             @Override
             public boolean postMine(ItemStack stack, World world, BlockState state, BlockPos pos, LivingEntity miner) {
-            ToolComponent toolComponent = stack.get(DataComponentTypes.TOOL);
+                ToolComponent toolComponent = stack.get(DataComponentTypes.TOOL);
                 if (toolComponent != null) {
                     if (!world.isClient && state.getHardness(world, pos) != 0.0F && toolComponent.damagePerBlock() > 0) {
                         stack.damage(toolComponent.damagePerBlock(), miner, EquipmentSlot.MAINHAND);
                     }
-                    return true;
                 }
-                if (!world.isClient){
-                    LOGGER.trace("Mined using item");
-                    String minerUUID = miner.getUuidAsString();
-                    String blockX= String.valueOf(pos.getX());
-                    String blockY= String.valueOf(pos.getY());
-                    String blockZ= String.valueOf(pos.getZ());
-                    String cmdc=stack.getOrDefault(ModComponents.POST_MINE_CMD,"");
-                    String[] cmds = getCommands(cmdc,"",minerUUID,blockX,blockY,blockZ);
-                    runCmds(miner, minerUUID, cmds);
-                    return true;
-            }
-            return false;
 
-        }
+                if (!world.isClient) {
+                    String minerUUID = miner.getUuidAsString();
+                    String blockX = String.valueOf(pos.getX());
+                    String blockY = String.valueOf(pos.getY());
+                    String blockZ = String.valueOf(pos.getZ());
+                    String cmdc = stack.getOrDefault(ModComponents.POST_MINE_CMD, "");
+
+                    if (!cmdc.isEmpty()) {
+                        String[] cmds = getCommands(cmdc, "", minerUUID, blockX, blockY, blockZ);
+                        executeCommands(cmds, miner);
+                    }
+                }
+                return true;
+}
         @Override
         public void inventoryTick(ItemStack stack, ServerWorld world, Entity entity, @Nullable EquipmentSlot slot) {
-                if (world.isClient){
-                    return;
-                }
-                LOGGER.trace("Inventory tick.");
-                String selfUUID= entity.getUuidAsString();
-                String cmdc=stack.getOrDefault(ModComponents.INVENTORY_TICK_CMD,"");
-                String[] cmds = getCommands(cmdc,"",selfUUID,"","","");
-                runCmdsWithServer(world.getServer(), selfUUID, cmds);
+            String selfUUID = entity.getUuidAsString();
+            String cmdc = stack.getOrDefault(ModComponents.INVENTORY_TICK_CMD, "");
+            if (cmdc.isEmpty()) {
+                return;
+            }
+
+            String[] cmds = getCommands(cmdc, "", selfUUID, "", "", "");
+            executeCommands(cmds, entity);
         }
         @Override
         public ActionResult useOnBlock(ItemUsageContext context) {
-            assert context.getPlayer() != null;
-            String selfUUID= context.getPlayer().getUuidAsString();
+            PlayerEntity player = context.getPlayer();
+            if (player == null || player.getWorld().isClient) {
+                return ActionResult.PASS;
+            }
+
+            String selfUUID = player.getUuidAsString();
             String blockX = String.valueOf(context.getBlockPos().getX());
             String blockY = String.valueOf(context.getBlockPos().getY());
             String blockZ = String.valueOf(context.getBlockPos().getZ());
 
-            String cmdc= context.getStack().getOrDefault(ModComponents.USE_ON_BLOCK_CMD,"");
-            if(Objects.equals(cmdc, "")){return ActionResult.PASS;}
-            String[] cmds = getCommands(cmdc,"",selfUUID,blockX,blockY,blockZ);
-            runCmdsWithServer(context.getPlayer().getServer(), selfUUID, cmds);
+            String cmdc = context.getStack().getOrDefault(ModComponents.USE_ON_BLOCK_CMD, "");
+            if (cmdc.isEmpty()) {
+                return ActionResult.PASS;
+            }
+
+            String[] cmds = getCommands(cmdc, "", selfUUID, blockX, blockY, blockZ);
+            executeCommands(cmds, player);
             return ActionResult.SUCCESS;
         }
 
