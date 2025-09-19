@@ -1,9 +1,12 @@
 package org.tanjimkamal.the_idea_anvil;
 
 import com.mojang.brigadier.CommandDispatcher;
+import com.mojang.brigadier.arguments.StringArgumentType;
+import com.mojang.brigadier.context.CommandContext;
 import com.mojang.brigadier.exceptions.CommandSyntaxException;
 import com.mojang.serialization.Codec;
 import net.fabricmc.api.ModInitializer;
+import net.fabricmc.fabric.api.command.v2.CommandRegistrationCallback;
 import net.fabricmc.fabric.api.itemgroup.v1.ItemGroupEvents;
 import net.minecraft.block.BlockState;
 import net.minecraft.component.ComponentType;
@@ -22,8 +25,10 @@ import net.minecraft.registry.Registry;
 import net.minecraft.registry.RegistryKey;
 import net.minecraft.registry.RegistryKeys;
 import net.minecraft.server.MinecraftServer;
+import net.minecraft.server.command.CommandManager;
 import net.minecraft.server.command.ServerCommandSource;
 import net.minecraft.server.world.ServerWorld;
+import net.minecraft.text.Text;
 import net.minecraft.util.ActionResult;
 import net.minecraft.util.Hand;
 import net.minecraft.util.Identifier;
@@ -53,6 +58,12 @@ import java.net.http.HttpResponse;
 import java.nio.charset.StandardCharsets;
 import java.util.Stack;
 import java.util.regex.Matcher;
+
+import net.minecraft.component.ComponentMap;
+import net.minecraft.server.network.ServerPlayerEntity;
+import com.google.gson.JsonElement;
+import com.mojang.serialization.JsonOps;
+import com.mojang.serialization.DataResult;
 
 
 public class The_idea_anvil implements ModInitializer {
@@ -184,31 +195,30 @@ public JsonObject getItem(String itemDesc) {
     try {
         // Create request body
         JsonObject requestBody = getRequestBody(itemDesc);
-
+        String content;
         // Create HTTP client and request
-        HttpClient client = HttpClient.newHttpClient();
-        HttpRequest request = HttpRequest.newBuilder()
-                .uri(URI.create(BASE_URL))
-                .header("Content-Type", "application/json")
-                .POST(HttpRequest.BodyPublishers.ofString(requestBody.toString()))
-                .build();
+        try(HttpClient client = HttpClient.newHttpClient()) {
+            HttpRequest request = HttpRequest.newBuilder()
+                    .uri(URI.create(BASE_URL))
+                    .header("Content-Type", "application/json")
+                    .POST(HttpRequest.BodyPublishers.ofString(requestBody.toString()))
+                    .build();
 
-        // Send request and get response
-        HttpResponse<String> response = client.send(request, HttpResponse.BodyHandlers.ofString());
+            // Send request and get response
+            HttpResponse<String> response = client.send(request, HttpResponse.BodyHandlers.ofString());
 
-        // Parse response
-        JsonObject responseJson = JsonParser.parseString(response.body()).getAsJsonObject();
-        System.out.println(responseJson.toString().substring(0, Math.min(100, responseJson.toString().length())));
+            // Parse response
+            JsonObject responseJson = JsonParser.parseString(response.body()).getAsJsonObject();
+            System.out.println(responseJson.toString().substring(0, Math.min(100, responseJson.toString().length())));
 
-        String content = responseJson.getAsJsonArray("choices")
-                .get(0).getAsJsonObject()
-                .getAsJsonObject("message")
-                .get("content").getAsString();
+            content = responseJson.getAsJsonArray("choices")
+                    .get(0).getAsJsonObject()
+                    .getAsJsonObject("message")
+                    .get("content").getAsString();
 
-        System.out.println(content);
-
-        JsonObject itemJson = (JsonObject) extractJsonFromResponse(content);
-        return itemJson;
+            System.out.println(content);
+        }
+        return (JsonObject) extractJsonFromResponse(content);
 
     } catch (IOException | InterruptedException e) {
         throw new RuntimeException("Failed to get item", e);
@@ -234,12 +244,70 @@ public JsonObject getItem(String itemDesc) {
         requestBody.addProperty("temperature", 0.1);
         return requestBody;
     }
+    public void giveItemToPlayer(ServerPlayerEntity player, String itemId, JsonElement components) {
+    try {
+        // Parse item ID
+        Identifier itemIdentifier = Identifier.of(itemId);
+        Item item = Registries.ITEM.get(itemIdentifier);
+
+        // Create base ItemStack
+        ItemStack itemStack = new ItemStack(item);
+
+        // Apply components if provided
+        if (components != null && components.isJsonObject()) {
+            // Use Minecraft's built-in component deserialization
+            DataResult<ComponentMap> result = ComponentMap.CODEC.parse(JsonOps.INSTANCE, components);
+
+            if (result.result().isPresent()) {
+                ComponentMap componentMap = result.result().get();
+                // Apply all components from the parsed map
+                itemStack.applyComponentsFrom(componentMap);
+            } else {
+                // Log error if parsing failed
+                System.err.println("Failed to parse components: " + result.error().map(Object::toString).orElse("Unknown error"));
+                return;
+            }
+        }
+
+        // Give item to player
+        boolean success = player.getInventory().insertStack(itemStack);
+
+        // If inventory is full, drop the item
+        if (!success) {
+            player.dropItem(itemStack, false);
+            // Consider it successful since we dropped it
+        }
+
+    } catch (Exception e) {
+        LOGGER.warn(e.toString());
+    }
+}
 
     @Override
     public void onInitialize() {
         ModItems.initialize();
         ModComponents.initialize();
         loadSystemPrompt();
+        CommandRegistrationCallback.EVENT.register((dispatcher, registryAccess, environment) -> {
+            dispatcher.register(CommandManager.literal("idea")
+                    .then(CommandManager.argument("value", StringArgumentType.greedyString())
+                    .executes(this::ideaCommand)));
+        });
+    }
+
+    private int ideaCommand(CommandContext<ServerCommandSource> context) {
+        context.getSource().sendFeedback(() -> Text.literal("Getting item..."), true);
+        String value = StringArgumentType.getString(context, "value");
+        JsonObject response = getItem(value);
+        if (!response.get("accepted").getAsBoolean()) {
+            context.getSource().sendFeedback(() -> Text.literal("Sorry, the AI determined your item is too OP or didn't understand you. "+value), true);
+            return 0;
+        }
+        ServerPlayerEntity player = context.getSource().getPlayer();
+        JsonObject components = response.get("components").getAsJsonObject();
+        giveItemToPlayer(player,"the_idea_anvil:custom_item",components);
+        context.getSource().sendFeedback(() -> Text.literal("Enjoy your item! "+value), true);
+        return 1;
     }
 
     public static class ModComponents {
@@ -380,6 +448,7 @@ public JsonObject getItem(String itemDesc) {
                 for(String cmd : cmdsToRun){
                     if(!Objects.equals(cmd.strip(), "function the_idea_anvil:do_nothing") && !Objects.equals(cmd.strip(), "")) {
                         try {
+                            LOGGER.info("Running cmd {}",cmd);
                             dispatcher.execute(cmd, commandSource);
                         } catch (CommandSyntaxException e) {
                             LOGGER.info("CommandSyntaxException: this means one of the items you/ai made has a invalid command");
