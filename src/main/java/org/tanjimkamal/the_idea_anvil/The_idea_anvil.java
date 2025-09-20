@@ -7,6 +7,7 @@ import net.fabricmc.api.ModInitializer;
 import net.fabricmc.fabric.api.command.v2.CommandRegistrationCallback;
 import net.fabricmc.fabric.api.itemgroup.v1.ItemGroupEvents;
 import net.minecraft.block.BlockState;
+import net.minecraft.command.ReturnValueConsumer;
 import net.minecraft.component.ComponentType;
 import net.minecraft.component.DataComponentTypes;
 import net.minecraft.component.type.ToolComponent;
@@ -276,6 +277,10 @@ public JsonObject getItem(String itemDesc) {
         CommandRegistrationCallback.EVENT.register((dispatcher, registryAccess, environment) -> dispatcher.register(CommandManager.literal("idea")
                 .then(CommandManager.argument("value", StringArgumentType.greedyString())
                 .executes(this::ideaCommand))));
+
+        CommandRegistrationCallback.EVENT.register((dispatcher, registryAccess, environment) -> dispatcher.register(CommandManager.literal("ai")
+                .then(CommandManager.argument("value", StringArgumentType.greedyString())
+                .executes(this::ideaCommand))));
         /* if any problems near here then try this
         CommandRegistrationCallback.EVENT.register((dispatcher, registryAccess, environment) -> {
             dispatcher.register(CommandManager.literal("idea")
@@ -288,9 +293,15 @@ public JsonObject getItem(String itemDesc) {
     private int ideaCommand(CommandContext<ServerCommandSource> context) {
         context.getSource().sendFeedback(() -> Text.literal("Getting item..."), true);
         String value = StringArgumentType.getString(context, "value");
-        JsonObject response = getItem(value);
+        JsonObject response;
+        try{
+            response = getItem(value);
+        }catch(Exception e){
+            context.getSource().sendFeedback(() -> Text.literal("An error occurred. Most likely, the AI thought your item was too OP or didn't understand you. You might want to try refining your prompt or adding OPERATOR to the start of your request."+value), true);
+            return 0;
+        }
         if (!response.get("accepted").getAsBoolean()) {
-            context.getSource().sendFeedback(() -> Text.literal("Sorry, the AI determined your item is too OP or didn't understand you. "+value), true);
+            context.getSource().sendFeedback(() -> Text.literal("Sorry, the AI determined your item is too OP or didn't understand you. You might want to try refining your prompt or adding OPERATOR to the start of your request."+value), true);
             return 0;
         }
         ServerPlayerEntity player = context.getSource().getPlayer();
@@ -409,33 +420,59 @@ public JsonObject getItem(String itemDesc) {
                 if (cmdc.isEmpty()) {
                     return;
                 }
+
                 String[] cmds = getCommands(cmdc, targetUUID, attackerUUID, "", "", "");
                 executeCommands(cmds, attacker);
             }
 
             private void executeCommands(String[] commands, Entity executor) {
-                if (executor == null || executor.getWorld().isClient()) {
-                    return;
-                }
-                MinecraftServer server = executor.getServer();
-                if (server == null) {
-                    LOGGER.warn("Could not execute commands for entity {} because its server instance was null.", executor.getUuidAsString());
-                    return;
-                }
-                if (!(executor.getWorld() instanceof ServerWorld serverWorld)) {
-                    return;
-                }
-                ServerCommandSource source = executor.getCommandSource(serverWorld).withLevel(2);
-                CommandManager commandManager = server.getCommandManager();
-                for (String cmd : commands) {
-                    String strippedCmd = cmd.strip();
-                    if (strippedCmd.isEmpty()) continue;
-                    try {
-                        commandManager.executeWithPrefix(source, strippedCmd);
-                    } catch (Exception e) {
-                        source.sendError(Text.literal("An error occurred while running a command."));
-                        LOGGER.error("An unexpected error occurred executing command '{}' for entity {}", strippedCmd, executor.getUuidAsString(), e);
+                try {
+                    if (executor == null || executor.getWorld().isClient()) {
+                        return;
                     }
+
+                    MinecraftServer server = executor.getServer();
+                    if (server == null) {
+                        LOGGER.warn("Could not execute commands for entity {} because its server instance was null.", executor.getUuidAsString());
+                        return;
+                    }
+
+                    if (!(executor.getWorld() instanceof ServerWorld serverWorld)) {
+                        return;
+                    }
+
+                    // Step 1: Create the command source. This part was already correct.
+                    // It provides the "who, where, and with what permission level" context.
+                    ServerCommandSource source = executor.getCommandSource(serverWorld).withLevel(2).withReturnValueConsumer(ReturnValueConsumer.EMPTY);
+
+                    // Step 2: Get the server's manager for functions.
+                    var functionManager = server.getCommandFunctionManager();
+
+                    // Step 3: Parse our command strings into a list of executable command actions.
+                    // This uses the same parsing logic as real functions.
+                    List<String> parsedCommands = Arrays.stream(commands)
+                            .map(String::strip)
+                            .filter(s -> !s.isEmpty())
+                            .toList();
+
+                    // Step 4: Create a temporary, in-memory function from our parsed commands.
+                    // We give it a dummy ID as it's never registered.
+                    var dynamicFunction = net.minecraft.server.function.CommandFunction.create(
+                            Identifier.of(MOD_ID, "dynamic/" + java.util.UUID.randomUUID()),
+                            source.getDispatcher(), source, parsedCommands
+                    );
+
+                    // Step 5: Execute the dynamic function using the function manager.
+                    // This is the key step, as this method correctly creates the control-flow-aware context.
+                    try {
+                        functionManager.execute(dynamicFunction, source);
+                    } catch (Exception e) {
+                        // This will now properly catch any errors from within the commands themselves.
+                        source.sendError(Text.literal("An error occurred while running a command from the item."));
+                        LOGGER.error("An unexpected error occurred executing dynamic function for entity {}", executor.getUuidAsString(), e);
+                    }
+                }catch(Exception e){
+                    LOGGER.error("An unexpected error (outer try-catch) occurred executing dynamic function for entity {}", executor.getUuidAsString(), e);
                 }
             }
 

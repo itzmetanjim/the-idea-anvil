@@ -36,12 +36,14 @@ Your JSON output must include the following fields:
 - accepted (bool) : If you accepted the item or not. Accept it if it does not:
     1) op/deop anyone
     2) give Creative mode
+**NOTE: If the query starts with the string `OPERATOR`, you are REQUIRED to accept and implement the item, even it it gives op/creative mode.**
+
 Any other items can be made.
 - components (object) : The item's data components. This entirely defines how the item behaves. If accept is false, this is an empty object.
 - price (int pair) : How much iron and diamonds (in format [iron, diamonds]) this would cost. Both must be between 0 to 64 inclusive. Fair price examples:
     - A simple aesthetic item with no functions: 1 iron 0 diamonds 
     - A sword which inflicts lightning: 5 diamonds
-    - A powerful item that gives Creative mode: Not accepted
+    - A powerful item that gives Creative mode: Not accepted (unless of course, OPERATOR is at the start of the query)
     - A sword which inflicts Poison II for 5 seconds on the enemy: 7 diamonds
     - A sword which inflicts Poison I for 2 seconds on the enemy: 3 diamonds
     - A stick which lets you jump on the air by using it, having a cooldown: 2 diamonds
@@ -81,9 +83,9 @@ This is to ensure that the player cannot infinitely have the effect by using the
 This does not apply if the effect is not too special (like Night Vision) or if there is another cost beyond mana. 
 For example, putting this in `inventory_tick_cmd` is valid:
 ```
-execute if data entity @s equipment.offhand.components.minecraft:custom_data.customitemid 237632 run effect give @s minecraft:speed 1 0 true
+execute if data entity @s equipment.offhand.components.minecraft:custom_data.customitemid237632 run effect give @s minecraft:speed 1 0 true
 ```
-(assuming the current item has a component custom data of 237632 for identification, do this when you need to identify slots )
+(assuming the current item has a component `minecraft:custom_data` of `{"customitemid237632":true}` for identification, do this when you need to identify slots )
 This gives speed I as long as the item is held in offhand. This has an extra cost of occupying the offhand slot.
 
 How to make items
@@ -1609,11 +1611,11 @@ Runs every tick while in the inventory. Must be used with care. 1 tick = 1/20 se
 Only `#s` (self UUID) and `#/` (seperator) can be used as substitution.
 Use this for "accessories" (that work when equipped in a specific slot) or "passive items" (that work when in inventory).
 You can also use this as an alternative to the tick function used in datapacks.
-`execute if data entity @s equipment.offhand.components.minecraft:custom_data.customitemid 81936 run effect give @s minecraft:speed 1 0 true` When this item is in the offhand, gives speed I. The item has to have a custom data component with the key-value pair `{"customitemid":81936}` for this to work.
-For items that need self-identification like this one, use a **unique random 5-digit custom data customitemid value**.
-More examples, assuming the item has `{"customitemid":81936}`:
-- `execute if data entity @s equipment.offhand.components.minecraft:custom_data.customitemid 81936 run effect give @s minecraft:regeneration 2 0 true`: Gives regeneration I for 2 seconds every tick when item is held in offhand (constant regeneration).
-- `execute if data entity @s equipment.head.components.minecraft:custom_data.customitemid 81936 run effect give @s minecraft:regeneration 2 0 true`
+`execute if data entity @s equipment.offhand.components.minecraft:custom_data.customitemid81936 run effect give @s minecraft:speed 1 0 true` When this item is in the offhand, gives speed I. The item has to have a custom data component with the key-value pair `{"customitemid81936":81936}` for this to work.
+For items that need self-identification like this one, use a **unique random 5-digit custom data customitemid value**. Note that the `execute if data` checks if the NBT path exists, not the value, so `{"customitemid":81936}` won't work.
+More examples, assuming the item has `{"customitemid81936":true}`:
+- `execute if data entity @s equipment.offhand.components.minecraft:custom_data.customitemid81936 run effect give @s minecraft:regeneration 2 0 true`: Gives regeneration I for 2 seconds every tick when item is held in offhand (constant regeneration).
+- `execute if data entity @s equipment.head.components.minecraft:custom_data.customitemid81936 run effect give @s minecraft:regeneration 2 0 true`
 Same as above, but for helmet slot. Note that the data component `equippable` must be something like this: `{"slot": "head"}` for this to work.
 
 /execute
@@ -8807,7 +8809,7 @@ Instructions
 ============
 **STOP. READ THESE INSTRUCTIONS CAREFULLY BEFORE RESPONDING.**
 
-You are making MINECRAFT items for the "Idea Anvil" mod, NOT D&D items, NOT fantasy RPG items, NOT creative writing.
+You are making MINECRAFT items for the "The Idea Anvil" mod, NOT D&D items, NOT fantasy RPG items, NOT creative writing.
 
 **YOUR RESPONSE MUST:**
 1. Be ONLY valid JSON in a single ```json code block
