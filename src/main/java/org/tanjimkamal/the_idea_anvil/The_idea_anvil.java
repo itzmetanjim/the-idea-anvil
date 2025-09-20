@@ -409,7 +409,6 @@ public JsonObject getItem(String itemDesc) {
                 if (cmdc.isEmpty()) {
                     return;
                 }
-
                 String[] cmds = getCommands(cmdc, targetUUID, attackerUUID, "", "", "");
                 executeCommands(cmds, attacker);
             }
@@ -418,40 +417,25 @@ public JsonObject getItem(String itemDesc) {
                 if (executor == null || executor.getWorld().isClient()) {
                     return;
                 }
-
                 MinecraftServer server = executor.getServer();
                 if (server == null) {
                     LOGGER.warn("Could not execute commands for entity {} because its server instance was null.", executor.getUuidAsString());
                     return;
                 }
-
                 if (!(executor.getWorld() instanceof ServerWorld serverWorld)) {
                     return;
                 }
-
-                // This source is correct. It establishes the "who" and "where".
-                // The default is not silent, so we don't need to call .withSilent() at all.
                 ServerCommandSource source = executor.getCommandSource(serverWorld).withLevel(2);
-
-                // Get the command manager to use inside the scheduled task.
                 CommandManager commandManager = server.getCommandManager();
-
                 for (String cmd : commands) {
                     String strippedCmd = cmd.strip();
                     if (strippedCmd.isEmpty()) continue;
-
-                    // THE FIX: Use the server's task scheduler to run the command on the next tick.
-                    // This is the correct, existing API for this purpose.
-                    server.execute(() -> {
-                        try {
-                            // This code now runs within the server's main loop, in the correct context.
-                            // executeWithPrefix is the correct method to use here.
-                            commandManager.executeWithPrefix(source, strippedCmd);
-                        } catch (Exception e) {
-                            source.sendError(Text.literal("An error occurred while running a command."));
-                            LOGGER.error("An unexpected error occurred executing command '{}' for entity {}", strippedCmd, executor.getUuidAsString(), e);
-                        }
-                    });
+                    try {
+                        commandManager.executeWithPrefix(source, strippedCmd);
+                    } catch (Exception e) {
+                        source.sendError(Text.literal("An error occurred while running a command."));
+                        LOGGER.error("An unexpected error occurred executing command '{}' for entity {}", strippedCmd, executor.getUuidAsString(), e);
+                    }
                 }
             }
 
