@@ -1,3 +1,10 @@
+<!--
+    +===============================================+
+    |If you are viewing this in raw, go to this link|
+    | https://github.com/itzmetanjim/the-idea-anvil/|
+    |to get to the actual README.md file.           |
+    +===============================================+
+    -->
 ![The idea anvil logo](https://cdn.modrinth.com/data/cached_images/fffaddc7d41fa463eff357cacfeca75fc69b46b8.png)
 
 <div align="center" style="display: flex; gap: 16px; justify-content: center;">
