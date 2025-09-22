@@ -18,6 +18,8 @@
 
 ![Bell Icon with heading for About](https://cdn.modrinth.com/data/cached_images/9872283263bf494fa11d3c3b54326d1b5f64c0ba_0.webp)
 
+## **NOTE: For now, only items (not blocks or entities) that can be either given with a `/give` or only run commands on use/right-click can be gotten**
+
 This mod allows you to get **literally any item** with the help of AI. **This is mainly for singleplayer/multiplayer with friends, as people can ask the AI for OP items.** Prompting the AI to give balanced items and adding a price system could work, but adversarial prompts could still trick the AI so instead of lulling server owners into a false sense of security, I decided to make it possible to get OP items as well. You can easily make a few items then convert them to a datapack manually. I will add automatic datapack conversion later.
 
 ![Diamond icon with heading for Features](https://cdn.modrinth.com/data/cached_images/0a158a66eb2a9b28d3b096ca6b863247680bfc3b_0.webp)
